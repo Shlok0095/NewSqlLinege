@@ -34,7 +34,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
-        'About': "SQL Lineage Analyzer v2.0 - Powered by Groq LLM"
+        'About': "SQL Lineage Analyzer v2.0 - Powered by Local LLAMA Model"
     }
 )
 
@@ -559,9 +559,9 @@ def display_visualizations(viz_tabs, column_mappings, statement_idx, sql_stateme
             llm = LLMIntegration()
             
             if not llm.is_enabled():
-                st.warning("LLM integration is not available. Please check your Groq API key configuration in the .env file and ensure the groq package is installed.")
-                st.info("To enable LLM integration, install the required packages with: `pip install groq python-dotenv`")
-                st.info("Then create a .env file with your Groq API key: `GROQ_API_KEY=your_api_key_here`")
+                st.warning("LLM integration is not available. Please check that you have the transformers and torch packages installed and that the LLAMA model path is correct.")
+                st.info("To enable LLM integration, install the required packages with: `pip install transformers torch`")
+                st.info("The model should be located at: `/v/region/na/appl/bi/infats/data/files/PROD/userarea/sysdict_da/Llama`")
             else:
                 # Display source-target lineage table first
                 st.markdown('<div class="llm-insight-header"><span class="llm-icon">🔄</span> Source-Target Lineage</div>', unsafe_allow_html=True)
@@ -956,7 +956,7 @@ def metadata_manager_tab():
                             # Check if LLM is available
                             llm = LLMIntegration()
                             if not llm.is_enabled():
-                                st.error("LLM integration is not available. Please check your Groq API key configuration.")
+                                st.error("LLM integration is not available. Please check that you have the transformers and torch packages installed and that the LLAMA model path is correct.")
                             else:
                                 success = False
                                 
@@ -1017,7 +1017,7 @@ def metadata_manager_tab():
                         # Check if LLM is available
                         llm = LLMIntegration()
                         if not llm.is_enabled():
-                            st.error("LLM integration is not available. Please check your Groq API key configuration.")
+                            st.error("LLM integration is not available. Please check that you have the transformers and torch packages installed and that the LLAMA model path is correct.")
                         else:
                             success = False
                             
@@ -1277,8 +1277,8 @@ def main():
     if not llm_available:
         st.sidebar.warning("LLM integration is not available.")
         st.sidebar.info("To enable LLM features, please:")
-        st.sidebar.markdown("1. Install required packages: `pip install groq python-dotenv`")
-        st.sidebar.markdown("2. Create a .env file with your Groq API key: `GROQ_API_KEY=your_key`")
+        st.sidebar.markdown("1. Install required packages: `pip install transformers torch`")
+        st.sidebar.markdown("2. Make sure the LLAMA model is available at the configured path")
         use_llm = False
     else:
         use_llm = st.sidebar.checkbox("Enable LLM-powered insights", value=True, 

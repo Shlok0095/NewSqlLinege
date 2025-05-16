@@ -6,63 +6,98 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# Set API key explicitly as a fallback
-os.environ["GROQ_API_KEY"] = "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"
-
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Debug: Print environment variables for troubleshooting
-print("DEBUG: .env file loaded")
-print(f"DEBUG: GROQ_API_KEY exists: {'GROQ_API_KEY' in os.environ}")
-if 'GROQ_API_KEY' in os.environ:
-    key_preview = os.environ.get("GROQ_API_KEY")[:10] + "..." if os.environ.get("GROQ_API_KEY") else "None"
-    print(f"DEBUG: GROQ_API_KEY preview: {key_preview}")
+# Flag to track if transformers is available
+TRANSFORMERS_AVAILABLE = False
 
 try:
-    from groq import Groq
-    GROQ_AVAILABLE = True
-    print("DEBUG: Groq package imported successfully")
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    import torch
+    TRANSFORMERS_AVAILABLE = True
+    print("DEBUG: Transformers package imported successfully")
 except ImportError:
-    logger.warning("Groq package not installed. LLM integration will not be available.")
-    GROQ_AVAILABLE = False
-    print("DEBUG: Groq package import failed")
+    logger.warning("Transformers package not installed. LLM integration will not be available.")
+    TRANSFORMERS_AVAILABLE = False
+    print("DEBUG: Transformers package import failed")
 
 class LLMIntegration:
-    """Class for integrating with LLM models via Groq API for enhanced SQL lineage explanations."""
+    """Class for integrating with local LLM models for enhanced SQL lineage explanations."""
     
     def __init__(self):
-        """Initialize the LLM integration."""
-        # Try to get API key from environment, or use hardcoded key as fallback
-        self.api_key = os.environ.get("GROQ_API_KEY")
-        if not self.api_key:
-            self.api_key = "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"
+        """Initialize the LLM integration with local model."""
+        # Path to the local LLAMA model directory
+        self.model_dir = "/v/region/na/appl/bi/infats/data/files/PROD/userarea/sysdict_da/Llama"
+        
+        self.is_available = TRANSFORMERS_AVAILABLE
+        
+        if not TRANSFORMERS_AVAILABLE:
+            logger.warning("Transformers package not installed. Install with: pip install transformers torch")
+            self.is_available = False
+            self.tokenizer = None
+            self.model = None
+            return
+        
+        try:
+            # Load the tokenizer
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_dir, local_files_only=True)
             
-        print(f"DEBUG: In LLMIntegration.__init__, api_key exists: {self.api_key is not None}")
-        
-        self.is_available = GROQ_AVAILABLE and self.api_key is not None
-        
-        if not GROQ_AVAILABLE:
-            logger.warning("Groq package not installed. Install with: pip install groq")
-        
-        if GROQ_AVAILABLE and not self.api_key:
-            logger.warning("GROQ_API_KEY not found in environment variables. LLM integration will not be available.")
-        
-        if self.is_available:
-            try:
-                self.client = Groq(api_key=self.api_key)
-                logger.info("Groq client initialized successfully")
-            except Exception as e:
-                logger.error(f"Error initializing Groq client: {str(e)}")
-                self.is_available = False
-                self.client = None
-        else:
-            self.client = None
+            # Load the model
+            self.model = AutoModelForCausalLM.from_pretrained(self.model_dir, local_files_only=True, device_map="cpu")
+            
+            # Set the model to evaluation mode
+            self.model.eval()
+            
+            logger.info("Local LLM model initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Error initializing local LLM model: {str(e)}")
+            self.is_available = False
+            self.tokenizer = None
+            self.model = None
     
     def is_enabled(self) -> bool:
         """Check if LLM integration is available and enabled."""
         return self.is_available
+    
+    def ask_question(self, question: str, max_tokens: int = 200) -> str:
+        """
+        Generate a response to a given question using the local LLM model.
+        
+        Args:
+            question: The question to ask the model
+            max_tokens: Maximum number of tokens to generate
+            
+        Returns:
+            str: The model's response
+        """
+        if not self.is_enabled():
+            return ""
+        
+        try:
+            # Tokenize the input question
+            inputs = self.tokenizer(question, return_tensors="pt").to("cpu")
+            
+            # Generate a response
+            with torch.no_grad():
+                output_tokens = self.model.generate(
+                    **inputs,
+                    max_new_tokens=max_tokens,
+                    do_sample=True,
+                    temperature=0.7,
+                    top_p=0.9,
+                    eos_token_id=self.tokenizer.eos_token_id
+                )
+                
+            # Decode and return the response
+            response = self.tokenizer.decode(output_tokens[0], skip_special_tokens=True)
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error generating response: {str(e)}")
+            return ""
     
     def generate_sql_explanation(self, sql_statement: str) -> Optional[str]:
         """Generate an explanation for the given SQL statement."""
@@ -107,26 +142,11 @@ class LLMIntegration:
         Format your response as a clear, technical explanation that would help a data engineer understand this query's purpose and flow. Use bullet points where appropriate for clarity.
         """
         
-        try:
-            completion = self.client.chat.completions.create(
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
-                messages=[
-                    {"role": "system", "content": "You are an expert SQL analyzer specializing in data lineage and data engineering. You provide detailed, accurate, and technically precise explanations of SQL queries with a focus on data flow and transformations."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.2,  # Lower temperature for more factual responses
-                max_completion_tokens=1500,
-                top_p=1,
-                stream=False,
-                stop=None,
-            )
-            
-            explanation = completion.choices[0].message.content
-            return explanation
-            
-        except Exception as e:
-            logger.error(f"Error generating SQL explanation: {str(e)}")
-            return None
+        system_context = "You are an expert SQL analyzer specializing in data lineage and data engineering. You provide detailed, accurate, and technically precise explanations of SQL queries with a focus on data flow and transformations."
+        
+        full_prompt = system_context + "\n\n" + prompt
+        
+        return self.ask_question(full_prompt, max_tokens=1500)
     
     def generate_lineage_insights(self, column_mappings: Dict[str, List[str]], sql_statement: str) -> Optional[str]:
         """Generate insights about the data lineage."""
@@ -184,26 +204,11 @@ class LLMIntegration:
         Format your response as a detailed technical analysis with specific, actionable insights that would help a data engineer understand and improve this data pipeline.
         """
         
-        try:
-            completion = self.client.chat.completions.create(
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
-                messages=[
-                    {"role": "system", "content": "You are a data lineage and SQL optimization expert with extensive experience in data engineering. You provide insightful, technical, and practical analysis of SQL data flows, with a focus on improvement opportunities and best practices."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.2,
-                max_completion_tokens=1500,
-                top_p=1,
-                stream=False,
-                stop=None,
-            )
-            
-            insights = completion.choices[0].message.content
-            return insights
-            
-        except Exception as e:
-            logger.error(f"Error generating lineage insights: {str(e)}")
-            return None
+        system_context = "You are a data lineage and SQL optimization expert with extensive experience in data engineering. You provide insightful, technical, and practical analysis of SQL data flows, with a focus on improvement opportunities and best practices."
+        
+        full_prompt = system_context + "\n\n" + prompt
+        
+        return self.ask_question(full_prompt, max_tokens=1500)
     
     def generate_response(self, prompt: str, system_prompt: str = None) -> Optional[str]:
         """
@@ -222,60 +227,9 @@ class LLMIntegration:
         if system_prompt is None:
             system_prompt = "You are a helpful AI assistant specializing in data and SQL analysis."
         
-        try:
-            completion = self.client.chat.completions.create(
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                max_completion_tokens=1500,
-                top_p=1,
-                stream=False,
-                stop=None,
-            )
-            
-            response = completion.choices[0].message.content
-            return response
-            
-        except Exception as e:
-            logger.error(f"Error generating response: {str(e)}")
-            return None
-    
-    def stream_response(self, prompt: str, system_prompt: str = None) -> Optional[str]:
-        """Stream a response from the LLM and return the combined result."""
-        if not self.is_enabled():
-            return None
+        full_prompt = system_prompt + "\n\n" + prompt
         
-        try:
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
-            
-            completion = self.client.chat.completions.create(
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
-                messages=messages,
-                temperature=1,
-                max_completion_tokens=1024,
-                top_p=1,
-                stream=True,
-                stop=None,
-            )
-            
-            # For streaming, we would normally yield chunks
-            # But here we'll combine them for the full response
-            full_response = ""
-            for chunk in completion:
-                content = chunk.choices[0].delta.content or ""
-                full_response += content
-                
-            return full_response
-            
-        except Exception as e:
-            logger.error(f"Error with streaming response: {str(e)}")
-            return None
+        return self.ask_question(full_prompt, max_tokens=1500)
     
     def generate_text(self, prompt: str) -> Optional[str]:
         """
@@ -290,23 +244,8 @@ class LLMIntegration:
         if not self.is_enabled():
             return ""
         
-        try:
-            # Set up the generation parameters
-            completion = self.client.chat.completions.create(
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant specialized in describing database structures. Keep descriptions concise and informative, focusing on the likely purpose and content of database elements based on their names."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_completion_tokens=200,
-                top_p=1,
-                frequency_penalty=0,
-                presence_penalty=0
-            )
-            
-            # Extract and return the generated text
-            return completion.choices[0].message.content.strip()
-        except Exception as e:
-            logger.error(f"Error generating text: {str(e)}")
-            return "" 
+        system_context = "You are a helpful assistant specialized in describing database structures. Keep descriptions concise and informative, focusing on the likely purpose and content of database elements based on their names."
+        
+        full_prompt = system_context + "\n\n" + prompt
+        
+        return self.ask_question(full_prompt, max_tokens=200) 

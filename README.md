@@ -10,7 +10,7 @@ SQL Lineage Analyzer helps data engineers, analysts, and governance teams unders
 
 - **SQL Analysis**: Parse and analyze complex SQL queries to extract column-level lineage
 - **Interactive Visualizations**: View lineage as network diagrams, directed graphs, and tables
-- **AI-Powered Insights**: Get detailed explanations of SQL transformations using Groq LLM
+- **AI-Powered Insights**: Get detailed explanations of SQL transformations using local LLAMA model
 - **Metadata Management**: Import, manage and export table/column metadata
 - **Lineage Exporting**: Export lineage information in various formats
 
@@ -34,9 +34,9 @@ SQL Lineage Analyzer helps data engineers, analysts, and governance teams unders
    pip install -r requirements-minimal.txt
    ```
    
-4. For LLM integration, create a `.env` file with your Groq API key:
+4. The local LLM integration uses the LLAMA model located at:
    ```
-   GROQ_API_KEY=your_api_key_here
+   /v/region/na/appl/bi/infats/data/files/PROD/userarea/sysdict_da/Llama
    ```
 
 ## Running the Application
@@ -90,15 +90,15 @@ This component is useful for sharing lineage information with other systems or t
 
 ### 4. LLM Integration
 
-The application integrates with Groq LLM to provide:
+The application integrates with a local LLAMA model to provide:
 
 - Detailed SQL query explanations
 - Data lineage insights and recommendations
 - Natural language descriptions of tables and columns
 
 To enable LLM features:
-1. Ensure you have a Groq API key
-2. Create a `.env` file with your key
+1. Ensure you have the required packages installed: `transformers` and `torch`
+2. The model is configured to use the path: `/v/region/na/appl/bi/infats/data/files/PROD/userarea/sysdict_da/Llama`
 3. Enable LLM integration in the sidebar
 
 ## Troubleshooting
@@ -110,7 +110,7 @@ To enable LLM features:
    pip install -r requirements-minimal.txt
    ```
 
-2. **LLM integration issues**: Check your `.env` file and Groq API key
+2. **LLM integration issues**: Make sure you have `transformers` and `torch` installed and that the model path exists
 
 3. **Streamlit errors**: Make sure you're using a supported Python version
 
@@ -124,6 +124,6 @@ To enable LLM features:
 
 SQL Lineage Analyzer uses several open-source technologies:
 - Streamlit for the web interface
-- Groq for LLM integration
+- Hugging Face Transformers for local LLM integration
 - Graphviz for lineage visualization
 - Various Python libraries for SQL parsing and analysis 
